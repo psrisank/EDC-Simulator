@@ -4,6 +4,7 @@ from MemoryNode import *
 from Switch import *
 from Packet import *
 from Port import *
+from Link import *
 
 import sys
 from queue import Queue
@@ -16,6 +17,7 @@ if (len(sys.argv) != 4):
     print("Usage: python3 Simulator.py <input_trace_file> <memory_input_file> <trace_log_file>")
     sys.exit(1)
 
+# TODO: Generate fifo queue as a Link
 
 # Overall simulation parameters
 queue_size = 128
@@ -38,6 +40,8 @@ num_memory_nodes = 128
 switches = []
 num_switches = 1
 
+links = []
+
 
 def main():
     global queue_size
@@ -46,7 +50,7 @@ def main():
 
 
     # Initialize the compute nodes
-    for id in range(num_compute_nodes, ):
+    for id in range(num_compute_nodes):
         compute_nodes.append(ComputeNode(id, cacheLineCnt))
         global_id += 1
     
@@ -61,6 +65,12 @@ def main():
     for id in range(num_switches):
         switches.append(Switch(id, num_compute_nodes, num_memory_nodes))
         global_id += 1
+
+
+    print(f"Max global id: {global_id}")
+    # Initialize the links
+    for id in range(global_id - 1):
+        links.append(Link())
 
 
     # TODO: Place data inside corresponding memory nodes
@@ -89,7 +99,7 @@ def main():
             inst_time = int(inst[0])
             compute_node_id = int(inst[1])
             inst_addr = int(inst[2], 16)
-            inst_op = IPGPacketType.LD_REQ if int(inst[3]) == 0 else IPGPacketType.ST_REQ
+            inst_op = IPGPacketOp.LD_REQ if int(inst[3]) == 0 else IPGPacketOp.ST_REQ
             inst_wrdata = int(inst[4], 16)
             inst_datalen = int(inst[6])
             compute_nodes[compute_node_id].instrQueue.append(Packet(inst_op, compute_node_id, inst_datalen, inst_addr, 0, 0, None, inst_time))
@@ -102,25 +112,21 @@ def main():
     global_time = 0
     while (global_time < final_time + 100):
         # Iterate through every compute node and perform necessary actions
-        for cnode in compute_nodes:
-            cnode.processInstructionQueue(global_time)
-            # Transfer from compute node to switch ports
-            cnode.processTXPort(global_time, switches[0])
-            # Transfer from switch ports to compute node
+        for cnode_id, cnode in enumerate(compute_nodes):
+            cnode.receive(links[cnode_id])
+            cnode.periodicAction(global_time)
+            cnode.transmit(links[cnode_id])
         
-        for switch in switches:
-            switch.processPorts(global_time, num_memory_nodes)
+        # for switch in switches:
+        #     switch.action(global_time, links)            
 
-        for memnode in memory_nodes:
-            memnode.processPort(global_time)
+        # # place packets from queues into link
+
+        # for memnode in memory_nodes:
+        #     switch.action(global_time, links)
         
-        # Increase global time on every iteration            
-        global_time += 1
-    
-
-
-
-
+        # # Increase global time on every iteration            
+        # global_time += 1
     
     return 0
 
