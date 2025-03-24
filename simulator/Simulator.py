@@ -57,13 +57,13 @@ def main():
 
     # Initialize the memory nodes. TODO: Add memory node parameters
     for id in range(num_memory_nodes):
-        memory_nodes.append(MemoryNode(id))
+        memory_nodes.append(MemoryNode(global_id))
         global_id += 1
 
 
     # Initialize the switches. TODO: Add switch parameters
     for id in range(num_switches):
-        switches.append(Switch(id, num_compute_nodes, num_memory_nodes))
+        switches.append(Switch(global_id, num_compute_nodes, num_memory_nodes))
         global_id += 1
 
 
@@ -77,15 +77,14 @@ def main():
     with open(memory_input_file_name, "r") as memfile:
         total_addresses = len(memfile.readlines())
         print(f"Total addresses: {total_addresses}")
-        address_per_node = math.ceil(total_addresses / 128)
         print(f"Each memory node has {address_per_node} addresses") if DEBUG else None
         addr_cnt = 0
         memfile.seek(0)
         for line in memfile.readlines():
             address = int(line.split(",")[0], 16)
             value = int(line.split(",")[1].strip(), 16)
-            print(f"Placed address {hex(address)} into memory node ID {int(addr_cnt / address_per_node)}") if DEBUG else None
-            memory_nodes[int(addr_cnt / address_per_node)].addAddress(address, value)
+            # print(f"Placed address {hex(address)} into memory node ID {int(addr_cnt / address_per_node)}") if DEBUG else None
+            memory_nodes[address % 128].addAddress(address, value)
             addr_cnt += 1
 
 
@@ -99,10 +98,11 @@ def main():
             inst_time = int(inst[0])
             compute_node_id = int(inst[1])
             inst_addr = int(inst[2], 16)
-            inst_op = IPGPacketOp.LD_REQ if int(inst[3]) == 0 else IPGPacketOp.ST_REQ
+            inst_op = PacketOp.LD_REQ if int(inst[3]) == 0 else PacketOp.ST_REQ
             inst_wrdata = int(inst[4], 16)
             inst_datalen = int(inst[6])
-            compute_nodes[compute_node_id].instrQueue.append(Packet(inst_op, compute_node_id, inst_datalen, inst_addr, 0, 0, None, inst_time))
+            dst = inst_addr % 128 + 128
+            compute_nodes[compute_node_id].instrQueue.append(Packet(inst_op, compute_node_id, inst_datalen, inst_addr, 0, dst, None, inst_time, inst_wrdata))
             overallInstructionCount += 1
             final_time = inst_time
 
@@ -110,25 +110,29 @@ def main():
 
     # TODO: Entire simulator loop
     global_time = 0
-    while (global_time < final_time + 100):
+    while (global_time < (final_time + 100)):
         # Iterate through every compute node and perform necessary actions
         for cnode_id, cnode in enumerate(compute_nodes):
             cnode.receive(links[cnode_id])
             cnode.periodicAction(global_time)
-            cnode.transmit(links[cnode_id])
+            cnode.send(links[cnode_id], global_time)
         
-        # for switch in switches:
-        #     switch.action(global_time, links)            
+        for switch in switches:
+            switch.receive(links)
+            switch.periodicAction(global_time)
+            switch.send(links, global_time)         
 
         # # place packets from queues into link
 
-        # for memnode in memory_nodes:
-        #     switch.action(global_time, links)
+        for mnode_id, memnode in enumerate(memory_nodes):
+            memnode.receive(links[mnode_id + 128])
+            memnode.periodicAction(global_time)
+            memnode.send(links[mnode_id + 128])
         
         # # Increase global time on every iteration            
-        # global_time += 1
+        global_time += 1
     
-    return 0
+    return
 
 if __name__ == "__main__":
     main()

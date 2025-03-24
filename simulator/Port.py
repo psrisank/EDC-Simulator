@@ -7,3 +7,6 @@ class Port:
 
         self.invalidation_buffer = []
         self.fwd_queue = Queue()
+
+        self.needsNACK = False
+        self.needsACK = False

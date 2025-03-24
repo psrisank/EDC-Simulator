@@ -6,12 +6,18 @@ class Link:
     
     def pushPkt(self, packet, stream):
         if (stream == "downstream"):
-            self.downStream.push(packet)
+            self.downStream.append(packet)
         else:
-            self.upStream.push(packet)
+            self.upStream.append(packet)
 
     def getPkt(self, stream):
         if (stream == "downstream"):
-            self.downStream.pop(0)
+            if (len(self.downStream) > 0):
+                return self.downStream.pop(0)
+            else:
+                return None
         else:
-            self.upStream.pop(0)
+            if (len(self.upStream) > 0):
+                return self.upStream.pop(0)
+            else:
+                return None
