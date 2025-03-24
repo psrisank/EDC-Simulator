@@ -125,19 +125,17 @@ class Switch:
                 else:
                     if (pkt.ackid == (0, 0)):
                         # first invalidation
+                        print("Received first invalidation")
                         self.ports[portID].invalidation_buffer.append(InvalidationTable(portID, "incomplete", pkt.addr, None))
                     elif (pkt.ackid == (0, 1)):
                         # second invalidation
-                        for tableIdx, table in enumerate(self.ports[portID].invalidation_buffer):
-                            if (pkt.addr == table.address):
-                                self.ports[portID].invalidation_buffer[tableIdx].bitmap = pkt.invalidations
-                                break
+                        print("Received second invalidation")
+                        self.ports[portID].invalidation_buffer[len(self.ports[portID].invalidation_buffer) - 1].bitmap = pkt.invalidation_bitmap
                     elif (pkt.ackid == (1, 0)):
-                        for tableIdx, table in enumerate(self.ports[portID].invalidation_buffer):
-                            if (pkt.addr == table.address):
-                                self.ports[portID].invalidation_buffer[tableIdx].bitmap += pkt.invalidations
-                                self.ports[portID].bitmap = "complete"
-                                break
+                        print("Received third invalidation")
+                        self.ports[portID].invalidation_buffer[len(self.ports[portID].invalidation_buffer) - 1].bitmap += pkt.invalidation_bitmap
+                        self.ports[portID].invalidation_buffer[len(self.ports[portID].invalidation_buffer) - 1].tag = "complete"
+                        print("Completed invalidation table")
                     else:
                         raise Exception("Unkown invalidation packet")
 
@@ -146,9 +144,27 @@ class Switch:
 
         # Send out the packets that are allowed to be transmitted
         for id, port in enumerate(self.ports):
+            delete_idx = None
+
+            for idx, invalidation_table in enumerate(port.invalidation_buffer):
+                if (invalidation_table.tag == "complete"):
+                    print("Found a complete table")
+                    for dst, invalidate in enumerate(invalidation_table.bitmap):
+                        if (invalidate == 1):
+                            print(f"Invalidating compute node {dst}")
+                            inv_pkt = Packet(PacketOp.INV, self.id, 0, invalidation_table.addr, (0, 0), dst, None, global_time, None)
+                            self.ports[dst].EgressQueue.put_nowait(inv_pkt)
+                    delete_idx = idx
+                    break
+            if (delete_idx != None):
+                port.invalidation_buffer.pop(delete_idx)
+
+
             if (port.fwd_queue.empty() or port.fwd_queue.queue[0] == None or port.fwd_queue.queue[0].timeToLeave > global_time):
                 continue
         
+
+
             # Grab packet from forward queue and place in egress queue
             pkt = port.fwd_queue.get_nowait()
             try:
@@ -162,15 +178,9 @@ class Switch:
                 self.ports[pkt.src].needsACK = False
                 continue
 
-            if (not port.invalidation_buffer):
-                continue
 
-            for idx, invalidation_table in enumerate(port.invalidation_buffer):
-                if (invalidation_table.tag == "complete"):
-                    for dst, invalidate in enumerate(invalidation_table.bitmap):
-                        if (invalidate == 1):
-                            inv_pkt = Packet(PacketOp.INV, self.id, 0, invalidation_table.addr, (0, 0), dst, None, global_time, None)
-                            self.ports[dst].fwd_queue.put_nowait(inv_pkt)
+
+
 
 
         

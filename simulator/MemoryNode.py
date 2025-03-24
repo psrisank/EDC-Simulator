@@ -104,21 +104,25 @@ class MemoryNode:
                 # Send invalidation to the switch, it will take care of the rest. Then send GRT to the requestor
                 data_idx = self.findDataIndex(pkt.addr)
                 inv_list = []
+                needs_invalidation = False
                 for i, nodeState in enumerate(self.memlines[data_idx].nodeStates):
                     if (i == pkt.src):
                         continue
             
                     if (nodeState != State.I):
                         inv_list.append(1)
+                        needs_invalidation = True
                     else:
                         inv_list.append(0)
                     
                 inv_pkt1 = Packet(PacketOp.INV, self.id, 0, pkt.addr, (0, 0), 0, None, global_time, None)
                 inv_pkt2 = Packet(PacketOp.INV, self.id, 0, None, (0, 1), None, inv_list[0:64], global_time, None)
                 inv_pkt3 = Packet(PacketOp.INV, self.id, 0, None, (1, 0), None, inv_list[64:], global_time, None)
-                self.sendQueue.append(inv_pkt1)
-                self.sendQueue.append(inv_pkt2)
-                self.sendQueue.append(inv_pkt3)
+
+                if (needs_invalidation):
+                    self.sendQueue.append(inv_pkt1)
+                    self.sendQueue.append(inv_pkt2)
+                    self.sendQueue.append(inv_pkt3)
 
 
                 # Send out the GRT so it can go ahead and do the write while everyone else is 
@@ -168,7 +172,7 @@ class MemoryNode:
             
         if (out_pkt != None):
             out_pkt.src = self.id
-            out_pkt.ackid = (0, 0)
+            # out_pkt.ackid = (0, 0)
             out_pkt.timeToLeave = global_time
             self.retransmit = copy.deepcopy(out_pkt)
             self.port.EgressQueue.put_nowait(out_pkt)
